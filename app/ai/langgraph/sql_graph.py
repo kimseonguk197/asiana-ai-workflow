@@ -45,6 +45,16 @@ def validate_sql_node(state: ChatGraphState) -> dict:
     print("[LangGraph][SQL] 검증 통과")
     return {"corrected_sql": result.corrected_sql, "validation_error": None}
 
+# validate_sql 이후 라우팅: 통과 -> execute_sql / 실패+재시도가능 -> fix_sql / 재시도소진 -> format_failure
+def route_after_validate(state: ChatGraphState) -> str:
+    if state.get("validation_error"):
+        decision = "retry" if state.get("retry_count", 0) < MAX_ATTEMPTS - 1 else "fail"
+    else:
+        decision = "execute"
+    print(f"[LangGraph][SQL] route_after_validate -> {decision}")
+    return decision
+
+
 
 def execute_sql_node(state: ChatGraphState) -> dict:
     try:
@@ -59,30 +69,6 @@ def execute_sql_node(state: ChatGraphState) -> dict:
         print(f"[LangGraph][SQL] 실행 실패: {e}")
         return {"execution_error": str(e)}
 
-
-def format_success_node(state: ChatGraphState) -> dict:
-    print("[LangGraph][SQL] format_success 진입")
-    response = format_sql_result(state["message"], state["query_results"])
-    return {"response": response}
-
-
-def format_failure_node(state: ChatGraphState) -> dict:
-    error = state.get("execution_error") or state.get("validation_error")
-    print(f"[LangGraph][SQL] format_failure 진입 | 최종 오류: {error}")
-    response = format_error_response(state["message"], error)
-    return {"response": response}
-
-
-# validate_sql 이후 라우팅: 통과 -> execute_sql / 실패+재시도가능 -> fix_sql / 재시도소진 -> format_failure
-def route_after_validate(state: ChatGraphState) -> str:
-    if state.get("validation_error"):
-        decision = "retry" if state.get("retry_count", 0) < MAX_ATTEMPTS - 1 else "fail"
-    else:
-        decision = "execute"
-    print(f"[LangGraph][SQL] route_after_validate -> {decision}")
-    return decision
-
-
 # execute_sql 이후 라우팅: 성공 -> format_success / 실패+재시도가능 -> fix_sql / 재시도소진 -> format_failure
 def route_after_execute(state: ChatGraphState) -> str:
     if state.get("execution_error"):
@@ -91,6 +77,21 @@ def route_after_execute(state: ChatGraphState) -> str:
         decision = "success"
     print(f"[LangGraph][SQL] route_after_execute -> {decision}")
     return decision
+
+# 성공응답
+def format_success_node(state: ChatGraphState) -> dict:
+    print("[LangGraph][SQL] format_success 진입")
+    response = format_sql_result(state["message"], state["query_results"])
+    return {"response": response}
+
+
+# 실패응답
+def format_failure_node(state: ChatGraphState) -> dict:
+    error = state.get("execution_error") or state.get("validation_error")
+    print(f"[LangGraph][SQL] format_failure 진입 | 최종 오류: {error}")
+    response = format_error_response(state["message"], error)
+    return {"response": response}
+
 
 
 def build_sql_graph():
@@ -104,6 +105,7 @@ def build_sql_graph():
     graph.add_node("format_failure", format_failure_node)
 
     graph.add_edge(START, "generate_sql")
+    # generate_sql 노드가 실행된 다음 validate_sql 노드를 실행
     graph.add_edge("generate_sql", "validate_sql")
     graph.add_conditional_edges(
         "validate_sql",
@@ -115,6 +117,7 @@ def build_sql_graph():
         route_after_execute,
         {"success": "format_success", "retry": "fix_sql", "fail": "format_failure"},
     )
+    # fix_sql실행후 다시 validate_sql노드로 이동
     graph.add_edge("fix_sql", "validate_sql")
     graph.add_edge("format_success", END)
     graph.add_edge("format_failure", END)
@@ -126,5 +129,5 @@ def build_sql_graph():
 sql_graph = build_sql_graph()
 
 # 그래프 구조를 서버 기동 시 1회 콘솔에 출력 (사이클 포함 노드/엣지 전체를 한눈에 확인용)
-print("[LangGraph][SQL] sql_graph 구조 (mermaid) ↓↓↓")
+print("[LangGraph][SQL] sql_graph 구조 ↓↓↓")
 print(sql_graph.get_graph().draw_mermaid())

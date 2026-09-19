@@ -3,11 +3,9 @@
 from langgraph.graph import StateGraph, START, END
 
 from app.ai.langgraph.state import ChatGraphState
-from app.ai.langgraph.sql_graph import sql_graph
+from app.ai.langgraph.get_api_graph import get_api_graph
 
 from app.ai.llm_use.llm_calling_langchain import classify_message_langchain
-from app.ai.api_use.chat_classify import classify_intent
-from app.ai.api_use.action.action_pipeline import call_action_pipeline
 from app.ai.rag.retriever import search_policy
 from app.ai.llm_use.llm_calling_langchain import (
     generate_response_langchain,
@@ -19,7 +17,7 @@ from app.ai.rag.semantic_cache import semantic_cache
 # LangSmith 연동은 .env(LANGSMITH_TRACING/LANGSMITH_API_KEY/LANGSMITH_PROJECT)에서 설정.
 # 이 그래프 전용 설정이 아니라 앱 전역 트레이싱 스위치라 여기 두지 않음.
 
-# 캐시 확인
+# 캐시 확인 및 state갱신
 def check_cache_node(state: ChatGraphState) -> dict:
     cached_response = semantic_cache.search(state["message"], state["member_id"])
     if cached_response:
@@ -28,72 +26,17 @@ def check_cache_node(state: ChatGraphState) -> dict:
     print("[LangGraph] 캐시 조회 결과: MISS")
     return {"cache_hit": False}
 
+def route_after_cache(state: ChatGraphState) -> str:
+    decision = "hit" if state.get("cache_hit") else "miss"
+    print(f"[LangGraph] route_after_cache -> {decision}")
+    return decision
+
+
 # 1차분류 : get_api, get_my_profile, get_policy
 def classify_message_node(state: ChatGraphState) -> dict:
     classification = classify_message_langchain(state["message"])
     print(f"[LangGraph] 1차 분류 결과: {classification}")
     return {"classification": classification}
-
-# 2차분류 : QUERY, ACTION, GENERAL
-def classify_intent_node(state: ChatGraphState) -> dict:
-    intent = classify_intent(state["message"])
-    print(f"[LangGraph] 2차 분류 결과: {intent}")
-    return {"intent": intent}
-
-
-def run_sql_node(state: ChatGraphState) -> dict:
-    print("[LangGraph] run_sql 진입 (sql_graph 서브그래프 실행)")
-    result = sql_graph.invoke({
-        "message": state["message"],
-        "db": state["db"],
-        "member_id": state["member_id"],
-        "retry_count": 0,
-    })
-    return {"response": result["response"]}
-
-
-def run_action_node(state: ChatGraphState) -> dict:
-    # [검토] 주문/상품 등록처럼 DB를 변경하는 요청은 실행 전에 사용자 확인을 받는 편이 안전함.
-    # api_graph.py의 start_action_pipeline/resume_action_pipeline이 그 확인(Human-in-the-loop) 흐름을
-    # 구현해두었으나, 여러 HTTP 요청에 걸친 "확인 대기" 상태 추적이 필요해 이 그래프에는 아직
-    # 연결하지 않음 (연결하려면 라우터에서 has_pending_confirmation()으로 먼저 분기 필요).
-    print("[LangGraph] run_action 진입")
-    response = call_action_pipeline(state["message"], state["db"], state["member_id"])
-    return {"response": response}
-
-
-def run_general_node(state: ChatGraphState) -> dict:
-    print("[LangGraph] run_general 진입")
-    response = generate_general_response(state["message"])
-    return {"response": response}
-
-
-def run_profile_node(state: ChatGraphState) -> dict:
-    print("[LangGraph] run_profile 진입")
-    member = state["member"]
-    data = f"- 회원번호: {member.id} / email: {member.email} / 회원명: {member.name} / age: {member.age} "
-    response = generate_response_langchain_sllm(state["message"], data)
-    return {"response": response}
-
-
-def run_policy_node(state: ChatGraphState) -> dict:
-    print("[LangGraph] run_policy 진입")
-    context = search_policy(state["message"])
-    response = generate_response_langchain(state["message"], context)
-    return {"response": response}
-
-
-def store_cache_node(state: ChatGraphState) -> dict:
-    # 캐시 히트로 종료된 경우 check_cache 이후 바로 END로 빠지므로 이 노드는 호출되지 않음
-    print("[LangGraph] store_cache 진입")
-    semantic_cache.store(state["message"], state["response"], state["member_id"])
-    return {}
-
-
-def route_after_cache(state: ChatGraphState) -> str:
-    decision = "hit" if state.get("cache_hit") else "miss"
-    print(f"[LangGraph] route_after_cache -> {decision}")
-    return decision
 
 
 def route_after_classify_message(state: ChatGraphState) -> str:
@@ -110,16 +53,42 @@ def route_after_classify_message(state: ChatGraphState) -> str:
     return decision
 
 
-def route_after_intent(state: ChatGraphState) -> str:
-    intent = state.get("intent")
-    if intent == "QUERY":
-        decision = "query"
-    elif intent == "ACTION":
-        decision = "action"
-    else:
-        decision = "general"
-    print(f"[LangGraph] route_after_intent -> {decision}")
-    return decision
+# get_api(1차 분류) 이후의 2차 분류(QUERY/ACTION/GENERAL)와 그 라우팅은 get_api_graph.py로 분리됨
+def run_get_api_node(state: ChatGraphState) -> dict:
+    print("[LangGraph] run_get_api 진입 (get_api_graph 서브그래프 실행)")
+    result = get_api_graph.invoke({
+        "message": state["message"],
+        "db": state["db"],
+        "member_id": state["member_id"],
+    })
+    return {"response": result["response"]}
+
+
+def run_profile_node(state: ChatGraphState) -> dict:
+    print("[LangGraph] run_profile 진입")
+    member = state["member"]
+    data = f"- 회원번호: {member.id} / email: {member.email} / 회원명: {member.name} / age: {member.age} "
+    response = generate_response_langchain_sllm(state["message"], data)
+    return {"response": response}
+
+
+def run_policy_node(state: ChatGraphState) -> dict:
+    print("[LangGraph] run_policy 진입")
+    context = search_policy(state["message"])
+    response = generate_response_langchain(state["message"], context)
+    return {"response": response}
+
+def run_general_node(state: ChatGraphState) -> dict:
+    print("[LangGraph] run_general 진입")
+    response = generate_general_response(state["message"])
+    return {"response": response}
+
+
+def store_cache_node(state: ChatGraphState) -> dict:
+    # 캐시 히트로 종료된 경우 check_cache 이후 바로 END로 빠지므로 이 노드는 호출되지 않음
+    print("[LangGraph] store_cache 진입")
+    semantic_cache.store(state["message"], state["response"], state["member_id"])
+    return {}
 
 
 def build_chat_graph():
@@ -128,28 +97,25 @@ def build_chat_graph():
 
     graph.add_node("check_cache", check_cache_node)
     graph.add_node("classify_message", classify_message_node)
-    graph.add_node("classify_intent", classify_intent_node)
+    graph.add_node("run_get_api", run_get_api_node)
     graph.add_node("run_profile", run_profile_node)
     graph.add_node("run_policy", run_policy_node)
     graph.add_node("run_general", run_general_node)
-    graph.add_node("run_sql", run_sql_node)
-    graph.add_node("run_action", run_action_node)
     graph.add_node("store_cache", store_cache_node)
 
     # START : 그래프를 실행할 때의 진입점
 #   check_cache ──(hit)──────────────────────────────────────────────▶ END
 #       │(miss)
 #       ▼
-#   classify_message ──(get_api)──▶ classify_intent ──(QUERY)──▶ run_sql ──┐
-#       │                                  │──────────(ACTION)─▶ run_action┤
-#       │                                  └──────────(GENERAL)─▶ run_general┤
-#       │(get_my_profile)──▶ run_profile ──────────────────────────────────┤
-#       │(get_policy)──────▶ run_policy ────────────────────────────────────┤
-#       └(그 외)───────────▶ run_general ────────────────────────────────────┤
-#                                                                  ▼
-#                                                              store_cache ─▶ END
+#   classify_message ──(get_api)──▶ run_get_api (get_api_graph 서브그래프: QUERY/ACTION/GENERAL)─┐
+#       │(get_my_profile)──▶ run_profile ─────────────────────────────────────────────────────┤
+#       │(get_policy)──────▶ run_policy ───────────────────────────────────────────────────────┤
+#       └(그 외)───────────▶ run_general ───────────────────────────────────────────────────────┤
+#                                                                                      ▼
+#                                                                                  store_cache ─▶ END
 
-    # edge는 아래순서로 순차적으로 실행
+    # Node = 행동, Edge = 이동 규칙
+    # check_cache노드부터 이동하여 실행
     graph.add_edge(START, "check_cache")
     graph.add_conditional_edges(
         "check_cache",  # 1. 분기할 기준 노드
@@ -160,21 +126,14 @@ def build_chat_graph():
         "classify_message",   #classify_message는 앞의 분기에서 선택됐을 때만 실행
         route_after_classify_message,
         {
-            "api": "classify_intent", #api값이 선택된 경우, classify_intent 선택
+            "api": "run_get_api", #api값이 선택된 경우, get_api_graph 서브그래프 실행
             "profile": "run_profile",
             "policy": "run_policy",
             "general": "run_general",
         },
     )
-    graph.add_conditional_edges(
-        "classify_intent",
-        route_after_intent,
-        {"query": "run_sql",
-         "action": "run_action",
-         "general": "run_general"},
-    )
 
-    for node in ("run_sql", "run_action", "run_general", "run_profile", "run_policy"):
+    for node in ("run_get_api", "run_profile", "run_policy", "run_general", ):
         graph.add_edge(node, "store_cache")
 
     graph.add_edge("store_cache", END)

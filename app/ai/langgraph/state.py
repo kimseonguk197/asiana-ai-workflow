@@ -29,13 +29,10 @@ class ChatGraphState(TypedDict, total=False):
     retry_count: int
     query_results: list[dict[str, Any]]
 
-    # ── Action 파이프라인 상태 (action_pipeline / api_graph 공용) ─
+    # ── Action 파이프라인 상태 (action_graph.py 전용) ───────
     category: Optional[str]
     selected_action_name: Optional[str]
     selected_action_args: dict
-
-    # ── api_graph.py 전용: 실행 전 확인(Human-in-the-loop) 상태 ──
-    confirmation_answer: Optional[str]
 
     # ── 최종 응답 ───────────────────────────────────────────
     response: str
