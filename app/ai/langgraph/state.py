@@ -25,10 +25,35 @@ class ChatGraphState(TypedDict, total=False):
     # sql_graph/action_graph가 재시도(MAX_ATTEMPTS)까지 다 쓰고도 실패하면 True로 설정.
     # get_api_graph(run_sql/run_action)를 거쳐 main_graph까지 그대로 전파됨.
     escalate: bool
-    reclassify: bool  # main_graph: escalate=True일 때 1차 분류(classify_message)로 되돌아갈지 여부
+    reclassify: bool  # 
     reclassify_count: int  # 1차 분류로 되돌아간 횟수
 
     # ── Text-to-SQL 서브그래프(sql_graph) 상태 ───────────────
+    # current_sql: str
+    # corrected_sql: Optional[str]
+    # validation_error: Optional[str]
+    # execution_error: Optional[str]
+    # retry_count: int  # 재시도 카운트
+    # query_results: list[dict[str, Any]]
+
+    # ── Action 파이프라인 상태 (action_graph.py 전용) ───────
+    # category: Optional[str]
+    # selected_action_name: Optional[str]
+    # selected_action_args: dict
+    # action_error: Optional[str]  # execute_action 실패 시 에러 메시지 (에러 시 select_action으로 재시도)
+
+    # ── 최종 응답 ───────────────────────────────────────────
+    response: str
+
+
+# ── sql_graph 전용 State ──────────────────────────────────────
+class SqlGraphState(TypedDict, total=False):
+    # ── 입력값 (부모 그래프에서 그대로 전달) ──────────────────
+    message: str
+    db: Any
+    member_id: int
+
+    # ── Text-to-SQL 진행 상태 ─────────────────────────────────
     current_sql: str
     corrected_sql: Optional[str]
     validation_error: Optional[str]
@@ -36,11 +61,25 @@ class ChatGraphState(TypedDict, total=False):
     retry_count: int  # 재시도 카운트
     query_results: list[dict[str, Any]]
 
-    # ── Action 파이프라인 상태 (action_graph.py 전용) ───────
+    # ── 부모 그래프(get_api_graph/main_graph)로 돌려줄 값 ──────
+    response: str
+    escalate: bool  
+
+
+# ── action_graph 전용 State ───────────────────────────────────
+class ActionGraphState(TypedDict, total=False):
+    # ── 입력값 (부모 그래프에서 그대로 전달) ──────────────────
+    message: str
+    db: Any
+    member_id: int
+
+    # ── Action 파이프라인 진행 상태 ────────────────────────────
     category: Optional[str]
     selected_action_name: Optional[str]
     selected_action_args: dict
-    action_error: Optional[str]  # execute_action 실패 시 에러 메시지 (에러 시 select_action으로 재시도)
+    action_error: Optional[str]  
+    retry_count: int
 
-    # ── 최종 응답 ───────────────────────────────────────────
+    # ── 부모 그래프(get_api_graph/main_graph)로 돌려줄 값 ──────
     response: str
+    escalate: bool 
