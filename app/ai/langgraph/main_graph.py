@@ -92,7 +92,7 @@ def store_cache_node(state: ChatGraphState) -> dict:
 
 
 def build_chat_graph():
-    # Node는 처리 과정, State는 데이터 묶음으로 노드들에게 전달되고 공유
+    # Node는 처리 작업, State는 데이터 묶음으로 노드들에게 전달되고, 변경되고, 공유
     graph = StateGraph(ChatGraphState)
 
     graph.add_node("check_cache", check_cache_node)
@@ -114,12 +114,12 @@ def build_chat_graph():
 #                                                                                      ▼
 #                                                                                  store_cache ─▶ END
 
-    # Node = 행동, Edge = 이동 규칙
+    # Node = 행동 및 상태값 결정, Edge = 이동 규칙
     # check_cache노드부터 이동하여 실행
     graph.add_edge(START, "check_cache")
     graph.add_conditional_edges(
-        "check_cache",  # 1. 분기할 기준 노드
-        route_after_cache, # 2. 분기값을 결정하는 함수
+        "check_cache",  # 1. 노드에서 작업 후 State값 결정
+        route_after_cache, # 2. State값을 통해 분기값을 결정하는 함수
         {"hit": END, "miss": "classify_message"}  # 3. 분기값 → 다음 노드
     )
     graph.add_conditional_edges(

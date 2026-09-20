@@ -26,13 +26,14 @@ class ChatGraphState(TypedDict, total=False):
     corrected_sql: Optional[str]
     validation_error: Optional[str]
     execution_error: Optional[str]
-    retry_count: int
+    retry_count: int  # 재시도 카운트
     query_results: list[dict[str, Any]]
 
     # ── Action 파이프라인 상태 (action_graph.py 전용) ───────
     category: Optional[str]
     selected_action_name: Optional[str]
     selected_action_args: dict
+    action_error: Optional[str]  # execute_action 실패 시 에러 메시지 (에러 시 select_action으로 재시도)
 
     # ── 최종 응답 ───────────────────────────────────────────
     response: str

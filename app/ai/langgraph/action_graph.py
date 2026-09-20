@@ -6,7 +6,9 @@
 #   select_action ─(tool 선택 실패: 정보 부족)─▶ END (안내 메시지)
 #         │(tool 선택됨)
 #         ▼
-#   execute_action ─▶ END
+#   execute_action ─(성공)─────────────────────────────────▶ END
+#         │(실행 오류, 재시도 가능)──▶ select_action (재시도)
+#         └(실행 오류, 재시도 소진)──▶ action_failed ─▶ END
 from langgraph.graph import StateGraph, START, END
 
 # action_pipeline.py의 카테고리 분류 함수(_classify_category)와 registry.py의 action 선택 함수
@@ -32,6 +34,22 @@ def select_action_node(state: ChatGraphState) -> dict:
     return {"selected_action_name": action_name, "selected_action_args": args}
 
 
+# 기존: 실행 실패 시 바로 에러 메시지로 END (재시도 없음). 아래 새 버전으로 대체.
+# def execute_action_node(state: ChatGraphState) -> dict:
+#     try:
+#         response = execute_action(
+#             state["selected_action_name"],
+#             state["selected_action_args"],
+#             state["db"],
+#             state["member_id"],
+#         )
+#     except Exception as e:
+#         print(f"[LangGraph][Action] 실행 실패 | error={e}")
+#         response = f"요청 처리 중 오류가 발생했습니다: {str(e)}"
+#     return {"response": response}
+
+MAX_ATTEMPTS = 2  # execute_action 실패 시 select_action으로 되돌아가 재시도할 최대 횟수
+
 def execute_action_node(state: ChatGraphState) -> dict:
     try:
         response = execute_action(
@@ -40,10 +58,16 @@ def execute_action_node(state: ChatGraphState) -> dict:
             state["db"],
             state["member_id"],
         )
+        return {"response": response, "action_error": None}
     except Exception as e:
-        print(f"[LangGraph][Action] 실행 실패 | error={e}")
-        response = f"요청 처리 중 오류가 발생했습니다: {str(e)}"
-    return {"response": response}
+        retry_count = state.get("retry_count", 0) + 1
+        print(f"[LangGraph][Action] 실행 실패 (시도 #{retry_count}) | error={e}")
+        return {"action_error": str(e), "retry_count": retry_count}
+
+
+def action_failed_node(state: ChatGraphState) -> dict:
+    print(f"[LangGraph][Action] 재시도 소진 | 최종 오류: {state.get('action_error')}")
+    return {"response": f"요청 처리 중 오류가 발생했습니다: {state.get('action_error')}"}
 
 
 def cannot_process_node(state: ChatGraphState) -> dict:
@@ -58,6 +82,16 @@ def route_after_select(state: ChatGraphState) -> str:
     return "execute" if state.get("selected_action_name") else "no_action"
 
 
+# execute_action 이후 라우팅: 성공 -> END / 실패+재시도가능 -> select_action(재시도) / 재시도소진 -> action_failed
+def route_after_execute(state: ChatGraphState) -> str:
+    if state.get("action_error"):
+        decision = "retry" if state.get("retry_count", 0) < MAX_ATTEMPTS else "fail"
+    else:
+        decision = "success"
+    print(f"[LangGraph][Action] route_after_execute -> {decision}")
+    return decision
+
+
 def build_action_graph():
     graph = StateGraph(ChatGraphState)
 
@@ -65,6 +99,7 @@ def build_action_graph():
     graph.add_node("select_action", select_action_node)
     graph.add_node("execute_action", execute_action_node)
     graph.add_node("cannot_process", cannot_process_node)
+    graph.add_node("action_failed", action_failed_node)
 
     graph.add_edge(START, "classify_category")
     graph.add_conditional_edges(
@@ -77,8 +112,14 @@ def build_action_graph():
         route_after_select,
         {"execute": "execute_action", "no_action": END},
     )
-    graph.add_edge("execute_action", END)
+    # 실행 실패 시 select_action으로 되돌아가 재시도 (sql_graph의 fix_sql↺validate_sql 사이클과 동일한 패턴)
+    graph.add_conditional_edges(
+        "execute_action",
+        route_after_execute,
+        {"success": END, "retry": "select_action", "fail": "action_failed"},
+    )
     graph.add_edge("cannot_process", END)
+    graph.add_edge("action_failed", END)
 
     return graph.compile()
 
