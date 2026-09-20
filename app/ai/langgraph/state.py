@@ -21,6 +21,13 @@ class ChatGraphState(TypedDict, total=False):
     # ── 2차 분류(action == "get_api"인 경우만): QUERY/ACTION/GENERAL
     intent: str
 
+    # ── 하위 그래프 → main_graph 이스컬레이션 ────────────────
+    # sql_graph/action_graph가 재시도(MAX_ATTEMPTS)까지 다 쓰고도 실패하면 True로 설정.
+    # get_api_graph(run_sql/run_action)를 거쳐 main_graph까지 그대로 전파됨.
+    escalate: bool
+    reclassify: bool  # main_graph: escalate=True일 때 1차 분류(classify_message)로 되돌아갈지 여부
+    reclassify_count: int  # 1차 분류로 되돌아간 횟수
+
     # ── Text-to-SQL 서브그래프(sql_graph) 상태 ───────────────
     current_sql: str
     corrected_sql: Optional[str]

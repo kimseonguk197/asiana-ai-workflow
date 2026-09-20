@@ -54,6 +54,7 @@ def route_after_classify_message(state: ChatGraphState) -> str:
 
 
 # get_api(1차 분류) 이후의 2차 분류(QUERY/ACTION/GENERAL)와 그 라우팅은 get_api_graph.py로 분리됨
+MAX_RECLASSIFY = 1  # sql_graph/action_graph가 재시도까지 소진하고도 실패(escalate)했을 때 1차 분류로 돌아갈 최대 횟수
 def run_get_api_node(state: ChatGraphState) -> dict:
     print("[LangGraph] run_get_api 진입 (get_api_graph 서브그래프 실행)")
     result = get_api_graph.invoke({
@@ -61,7 +62,20 @@ def run_get_api_node(state: ChatGraphState) -> dict:
         "db": state["db"],
         "member_id": state["member_id"],
     })
-    return {"response": result["response"]}
+    # return {"response": result["response"]}
+    # 2차 분류 이후의 작업에서 처리 실패 날경우 1차에서부터 재작업
+    reclassify_count = state.get("reclassify_count", 0)
+    # sql_graph/action_graph가 내부 재시도를 다 쓰고도 실패해서 올려보낸 escalate 신호 확인
+    if result.get("escalate") and reclassify_count < MAX_RECLASSIFY:
+        print(f"[LangGraph] get_api 처리 실패(escalate) → 1차 분류부터 재시도 ({reclassify_count + 1}/{MAX_RECLASSIFY})")
+        return {"reclassify": True, "reclassify_count": reclassify_count + 1}
+    return {"reclassify": False, "response": result["response"]}
+
+
+def route_after_get_api(state: ChatGraphState) -> str:
+    decision = "reclassify" if state.get("reclassify") else "done"
+    print(f"[LangGraph] route_after_get_api -> {decision}")
+    return decision
 
 
 def run_profile_node(state: ChatGraphState) -> dict:
@@ -107,8 +121,9 @@ def build_chat_graph():
 #   check_cache ──(hit)──────────────────────────────────────────────▶ END
 #       │(miss)
 #       ▼
-#   classify_message ──(get_api)──▶ run_get_api (get_api_graph 서브그래프: QUERY/ACTION/GENERAL)─┐
-#       │(get_my_profile)──▶ run_profile ─────────────────────────────────────────────────────┤
+#   classify_message ◀────────────────────────────┐(sql_graph/action_graph 재시도까지 소진 후 실패: escalate, 최대 MAX_RECLASSIFY회)
+#       │(get_api)──▶ run_get_api (get_api_graph 서브그래프: QUERY/ACTION/GENERAL) ─┘
+#       │(get_my_profile)──▶ run_profile ─────────────────────────────────────────────────────┐
 #       │(get_policy)──────▶ run_policy ───────────────────────────────────────────────────────┤
 #       └(그 외)───────────▶ run_general ───────────────────────────────────────────────────────┤
 #                                                                                      ▼
@@ -132,9 +147,20 @@ def build_chat_graph():
             "general": "run_general",
         },
     )
+    # for node in ("run_get_api", "run_profile", "run_policy", "run_general"):
+    #         graph.add_edge(node, "store_cache")
+        
 
-    for node in ("run_get_api", "run_profile", "run_policy", "run_general", ):
-        graph.add_edge(node, "store_cache")
+    # sql_graph/action_graph가 재시도까지 소진하고도 실패(escalate)했으면 classify_message로 되돌아가
+    # 1차 분류부터 재시도(최대 MAX_RECLASSIFY회)
+    graph.add_conditional_edges(
+        "run_get_api",
+        route_after_get_api,
+        {"reclassify": "classify_message", "done": "store_cache"},
+    )
+    # 나머지 분기는 항상 store_cache로 수렴
+    for node in ("run_profile", "run_policy", "run_general"):
+            graph.add_edge(node, "store_cache")
 
     graph.add_edge("store_cache", END)
 

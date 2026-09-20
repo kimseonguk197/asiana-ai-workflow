@@ -34,7 +34,7 @@ def select_action_node(state: ChatGraphState) -> dict:
     return {"selected_action_name": action_name, "selected_action_args": args}
 
 
-# 기존: 실행 실패 시 바로 에러 메시지로 END (재시도 없음). 아래 새 버전으로 대체.
+# 기존: 실행 실패 시 바로 에러 메시지로 END (재시도 없음)
 # def execute_action_node(state: ChatGraphState) -> dict:
 #     try:
 #         response = execute_action(
@@ -47,9 +47,7 @@ def select_action_node(state: ChatGraphState) -> dict:
 #         print(f"[LangGraph][Action] 실행 실패 | error={e}")
 #         response = f"요청 처리 중 오류가 발생했습니다: {str(e)}"
 #     return {"response": response}
-
 MAX_ATTEMPTS = 2  # execute_action 실패 시 select_action으로 되돌아가 재시도할 최대 횟수
-
 def execute_action_node(state: ChatGraphState) -> dict:
     try:
         response = execute_action(
@@ -67,7 +65,10 @@ def execute_action_node(state: ChatGraphState) -> dict:
 
 def action_failed_node(state: ChatGraphState) -> dict:
     print(f"[LangGraph][Action] 재시도 소진 | 최종 오류: {state.get('action_error')}")
-    return {"response": f"요청 처리 중 오류가 발생했습니다: {state.get('action_error')}"}
+    response = f"요청 처리 중 오류가 발생했습니다: {state.get('action_error')}"
+    # return {"response": response}
+    # 재시도(MAX_ATTEMPTS)까지 다 쓰고도 실패 → main_graph에서 1차 분류부터 재시도할 수 있도록 신호 전달
+    return {"response": response, "escalate": True}
 
 
 def cannot_process_node(state: ChatGraphState) -> dict:
@@ -112,7 +113,7 @@ def build_action_graph():
         route_after_select,
         {"execute": "execute_action", "no_action": END},
     )
-    # 실행 실패 시 select_action으로 되돌아가 재시도 (sql_graph의 fix_sql↺validate_sql 사이클과 동일한 패턴)
+    # 실행 실패 시 select_action으로 되돌아가 재시도
     graph.add_conditional_edges(
         "execute_action",
         route_after_execute,

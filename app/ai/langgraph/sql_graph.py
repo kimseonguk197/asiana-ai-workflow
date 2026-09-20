@@ -90,7 +90,9 @@ def format_failure_node(state: ChatGraphState) -> dict:
     error = state.get("execution_error") or state.get("validation_error")
     print(f"[LangGraph][SQL] format_failure 진입 | 최종 오류: {error}")
     response = format_error_response(state["message"], error)
-    return {"response": response}
+    # return {"response": response}
+    # 재시도(MAX_ATTEMPTS)까지 다 쓰고도 실패 → main_graph에서 1차 분류부터 재시도할 수 있도록 신호 전달
+    return {"response": response, "escalate": True}
 
 
 

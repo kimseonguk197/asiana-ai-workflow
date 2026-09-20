@@ -1,5 +1,4 @@
 # get_api(1차 분류) 이후 서브그래프: 2차 분류(QUERY/ACTION/GENERAL)와 그 라우팅
-# main_graph.py가 떠안고 있던 이 부분을 분리해, main_graph는 get_api_graph를 한 노드로만 호출한다.
 
 from langgraph.graph import END, StateGraph, START
 
@@ -26,7 +25,9 @@ def run_sql_node(state: ChatGraphState) -> dict:
         "member_id": state["member_id"],
         "retry_count": 0,
     })
-    return {"response": result["response"]}
+    # return {"response": result["response"]}
+    # escalate 플래그도 함께 전달 (main_graph가 재시도까지 소진한 실패를 감지할 수 있도록).
+    return {"response": result["response"], "escalate": result.get("escalate", False)}
 
 
 def run_action_node(state: ChatGraphState) -> dict:
@@ -36,7 +37,9 @@ def run_action_node(state: ChatGraphState) -> dict:
         "db": state["db"],
         "member_id": state["member_id"],
     })
-    return {"response": result["response"]}
+    # return {"response": result["response"]}
+    # escalate 플래그도 함께 전달 (main_graph가 재시도까지 소진한 실패를 감지할 수 있도록).
+    return {"response": result["response"], "escalate": result.get("escalate", False)}
 
 
 def run_general_node(state: ChatGraphState) -> dict:
