@@ -48,12 +48,10 @@ ACTION_LIST = [
 
 
 def _cancel_order(args: dict, db: Session, member_id: int) -> str:
-    try:
-        order_id, product_name, quantity = order_service.cancel_order(
-            db, member_id, args["order_id"]
-        )
-    except ValueError as e:
-        return str(e)
+    
+    order_id, product_name, quantity = order_service.cancel_order(
+        db, member_id, args["order_id"]
+    )
 
     return (
         f"주문이 취소되었습니다.\n"
@@ -64,12 +62,10 @@ def _cancel_order(args: dict, db: Session, member_id: int) -> str:
 
 
 def _place_order(args: dict, db: Session, member_id: int) -> str:
-    try:
-        order, product = order_service.place_order(
-            db, member_id, args["product_id"], args["quantity"]
-        )
-    except ValueError as e:
-        return str(e)
+    
+    order, product = order_service.place_order(
+        db, member_id, args["product_id"], args["quantity"]
+    )
 
     return (
         f"주문이 완료되었습니다!\n"

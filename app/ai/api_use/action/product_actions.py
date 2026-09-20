@@ -78,11 +78,8 @@ def _update_product(args: dict, db: Session, member_id: int) -> str:
     if not fields:
         return "변경할 항목이 없습니다. 수정할 필드를 지정해 주세요."
 
-    try:
-        product = product_service.update_product(db, member_id, product_id, **fields)
-    except ValueError as e:
-        return str(e)
-
+    product = product_service.update_product(db, member_id, product_id, **fields)
+    
     return (
         f"상품이 수정되었습니다!\n"
         f"- 상품 ID: {product.id}\n"
