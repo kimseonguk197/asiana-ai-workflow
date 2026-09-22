@@ -17,6 +17,7 @@ from app.routers.member import my_page
 
 from app.ai.rag.semantic_cache import semantic_cache
 from app.ai.langgraph.main_graph import run_chat_graph
+from app.ai.langgraph.main_graph import run_chat_graph_hitl
 
 router = APIRouter(prefix="/chats", tags=["chat"])
 @router.post("", response_model=schemas.ChatResponse, status_code=status.HTTP_201_CREATED)
@@ -28,7 +29,8 @@ def create_chat(
 
     # [LangGraph 적용시] 캐시 조회부터 if/elif 분기 전체를 run_chat_graph줄로 대체
     response_text = run_chat_graph(body.message, db, current_member)
-
+    # response_text = run_chat_graph_hitl(body.message, db, current_member)
+        
     # # 같은질문에 대한 캐싱 : redis stack에 같은 질문이 이력이 있는지 검색
     # cached_response = semantic_cache.search(body.message, current_member.id)
 

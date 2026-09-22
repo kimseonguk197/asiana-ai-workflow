@@ -28,6 +28,9 @@ class ChatGraphState(TypedDict, total=False):
     reclassify: bool  # 
     reclassify_count: int  # 1차 분류로 되돌아간 횟수
 
+    # HITL 을 위한 변수
+    pending_confirm: Optional[dict]
+
     # ── Text-to-SQL 서브그래프(sql_graph) 상태 ───────────────
     # current_sql: str
     # corrected_sql: Optional[str]

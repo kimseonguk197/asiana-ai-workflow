@@ -20,6 +20,13 @@ from app.ai.api_use.action.registry import get_action_list_by_category, get_acti
 # 기존에는 main_graph와 공유하는 ChatGraphState를 그대로 썼지만, 분리
 from app.ai.langgraph.state import ActionGraphState
 
+import os
+from langgraph.types import interrupt
+from psycopg_pool import ConnectionPool
+from psycopg.rows import dict_row
+from langgraph.checkpoint.postgres import PostgresSaver
+from langchain_core.runnables import RunnableConfig
+
 # def classify_category_node(state: ChatGraphState) -> dict:
 # 나머지 node와 edge도 모두 ActionGraphState로 변경
 def classify_category_node(state: ActionGraphState) -> dict:
@@ -64,6 +71,35 @@ def execute_action_node(state: ActionGraphState) -> dict:
         print(f"[LangGraph][Action] 실행 실패 (시도 #{retry_count}) | error={e}")
         return {"action_error": str(e), "retry_count": retry_count}
 
+
+def execute_action_node_hitl(state: ActionGraphState, config: RunnableConfig) -> dict:
+    # HITL 순서1.execute_action 직전 정지
+    # DB에 checkpoint상태저장(현재 노드에서 사용된 ActionGraphState의 변수, 노드명 등 여러 상태값 저장)
+    # {"__interrupt__": (value=아래 dict, ...),)}형태의 값 상위로 전달
+    decision = interrupt({
+    # HITL 순서4. 이후 Command(resume=decision)으로 이 위치로 다시 호출되면, interrupt()는 approve를 반환
+        "action_name": state["selected_action_name"],
+        "args": state["selected_action_args"],
+    })
+    if decision != "approve":
+        print(f"[LangGraph][Action] 사용자가 실행을 취소함 | action={state['selected_action_name']}")
+        return {"response": "요청하신 작업을 취소했습니다.", "action_error": None}
+
+    # db는 run_action_node(get_api_graph.py)에서 주입하여, config(configurable)로 전달
+    db = config["configurable"]["db"]
+    try:
+        response = execute_action(
+            state["selected_action_name"],
+            state["selected_action_args"],
+            db,
+            state["member_id"],
+        )
+        return {"response": response, "action_error": None}
+    except Exception as e:
+        retry_count = state.get("retry_count", 0) + 1
+        print(f"[LangGraph][Action] 실행 실패 (시도 #{retry_count}) | error={e}")
+        return {"action_error": str(e), "retry_count": retry_count}
+
 def action_failed_node(state: ActionGraphState) -> dict:
     print(f"[LangGraph][Action] 재시도 소진 | 최종 오류: {state.get('action_error')}")
     response = f"요청 처리 중 오류가 발생했습니다: {state.get('action_error')}"
@@ -100,6 +136,8 @@ def build_action_graph():
     graph.add_node("classify_category", classify_category_node)
     graph.add_node("select_action", select_action_node)
     graph.add_node("execute_action", execute_action_node)
+    # HITL 적용
+    # graph.add_node("execute_action", execute_action_node_hitl)
     graph.add_node("cannot_process", cannot_process_node)
     graph.add_node("action_failed", action_failed_node)
 
@@ -123,8 +161,19 @@ def build_action_graph():
     graph.add_edge("cannot_process", END)
     graph.add_edge("action_failed", END)
 
-    return graph.compile()
+    # return graph.compile()
+    # execute_action 안의 interrupt()가 동작하려면 checkpointer가 필수.
+    return graph.compile(checkpointer=_checkpointer)
 
+
+# PostgresSaver는 (autocommit=True, row_factory=dict_row) 커넥션이 필요.
+_checkpointer_pool = ConnectionPool(
+    conninfo=os.getenv("DATABASE_URL"),
+    max_size=10,
+    kwargs={"autocommit": True, "row_factory": dict_row}, #조회 결과를 dict 형태로 반환
+)
+_checkpointer = PostgresSaver(_checkpointer_pool)
+_checkpointer.setup()  # checkpoints 관련 테이블이 없다면 자동 생성
 
 action_graph = build_action_graph()
 

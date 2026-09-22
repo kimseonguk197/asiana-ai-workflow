@@ -19,6 +19,7 @@ langchain-community # BM25Retriever
 langchain_ollama
 rank-bm25 # BM25 algorithm (langchain-community BM25Retriever related)
 langgraph # LangGraph
+langgraph-checkpoint-postgres # LangGraph interrupt(HITL) checkpoint save
 grandalf #graph text ui
 # Redis cache
 redis[hiredis] 

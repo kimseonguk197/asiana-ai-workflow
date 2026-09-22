@@ -1,9 +1,13 @@
 # 전체 챗 파이프라인의 LangGraph 버전 (최상위 오케스트레이션 그래프)
 
 from langgraph.graph import StateGraph, START, END
+# HITL : 대기 중인 action_graph를 사용자의 답변으로 재개(resume)하기 위해 필요.
+from langgraph.types import Command
 
 from app.ai.langgraph.state import ChatGraphState
 from app.ai.langgraph.get_api_graph import get_api_graph
+# HITL : action_graph의 확인 대기(interrupt) 상태 조회/재개(resume)를 위해 직접 참조.
+from app.ai.langgraph.action_graph import action_graph
 
 from app.ai.llm_use.llm_calling_langchain import classify_message_langchain
 from app.ai.rag.retriever import search_policy
@@ -62,8 +66,13 @@ def run_get_api_node(state: ChatGraphState) -> dict:
         "db": state["db"],
         "member_id": state["member_id"],
     })
-    # return {"response": result["response"]}
-    # 2차 분류 이후의 작업에서 처리 실패 날경우 1차에서부터 재작업
+
+    # HITL
+    # action_graph가 interrupt()로 확인을 기다리는 중이면 대기 상태를 그대로 상위(run_chat_graph)까지 전달
+    if result.get("pending_confirm"):
+        return {"pending_confirm": result["pending_confirm"]}
+
+    # 1차에서 재분류작업 : 2차 분류 이후의 작업에서 처리 실패 날경우 1차에서부터 재작업
     reclassify_count = state.get("reclassify_count", 0)
     # sql_graph/action_graph가 내부 재시도를 다 쓰고도 실패해서 올려보낸 escalate 신호 확인
     if result.get("escalate") and reclassify_count < MAX_RECLASSIFY:
@@ -73,7 +82,13 @@ def run_get_api_node(state: ChatGraphState) -> dict:
 
 
 def route_after_get_api(state: ChatGraphState) -> str:
-    decision = "reclassify" if state.get("reclassify") else "done"
+    if state.get("reclassify"):
+        decision = "reclassify"
+    # HITL
+    elif state.get("pending_confirm"):
+        decision = "pending"
+    else:
+        decision = "done"
     print(f"[LangGraph] route_after_get_api -> {decision}")
     return decision
 
@@ -156,7 +171,9 @@ def build_chat_graph():
     graph.add_conditional_edges(
         "run_get_api",
         route_after_get_api,
-        {"reclassify": "classify_message", "done": "store_cache"},
+        # {"reclassify": "classify_message", "done": "store_cache"}
+        # HITL : pending은 아직 response가 없어 store_cache로 보내면 안 되므로 바로 END.
+        {"reclassify": "classify_message", "done": "store_cache", "pending": END},
     )
     # 나머지 분기는 항상 store_cache로 수렴
     for node in ("run_profile", "run_policy", "run_general"):
@@ -183,4 +200,44 @@ def run_chat_graph(message: str, db, member) -> str:
         "member": member,
         "member_id": member.id,
     })
+    return final_state["response"]
+
+def run_chat_graph_hitl(message: str, db, member) -> str:
+    # HITL 순서3. 중단여부 확인 및 재개 요청
+    # get_state시에 action_graph에 붙어있는 checkpointer(=PostgresSaver)가 DB 조회
+    # 실행완료되지 않은 checkpoint가 있다면, 사용자의 응답에 따라 action_graph 재실행
+    thread_id = f"member-{member.id}"
+    if action_graph.get_state({"configurable": {"thread_id": thread_id}}).next:
+        # 사용자의 답변에 따라 decision을 approve로 세팅
+        decision = "approve" if message.strip() in ("예", "네", "y", "yes", "승인") else "deny"
+        print(f"[LangGraph] action 실행 확인 재개 | member_id={member.id} | 답변={message} -> {decision}")
+        # 재개 지시
+        # 1.execute_action_node에 decision명령
+        # 2.DB의 checkpoint의 내용에 저장된 execute_action으로 직행
+        # 3.checkpoint의 내용을 기반하여 ActionGraphState State생성 후 주입
+        result = action_graph.invoke(
+            Command(resume=decision),
+            config={"configurable": {"thread_id": thread_id, "db": db}},
+        )
+        return result["response"]
+
+    # Graph 실행을 시작할 때 StateGraph객체의 invoke함수를 실행하여 초기 State 주입
+    final_state = chat_graph.invoke({
+        "message": message,
+        "db": db,
+        "member": member,
+        "member_id": member.id,
+    })
+
+    # HITL 순서2. 사용자에게 확인 문구 전달
+    # action 실행 전 확인 대기(interrupt) 상태면, 최종 응답 대신 확인 메시지를 반환
+    # 다음 메시지가 들어오면 위 resume 분기에서 이어서 처리
+    if final_state.get("pending_confirm"):
+        payload = final_state["pending_confirm"]
+        return (
+            f"다음 작업을 진행할까요?\n"
+            f"- 작업: {payload.get('action_name')}\n"
+            f"- 내용: {payload.get('args')}\n"
+            f"(예/아니오로 답해주세요)"
+        )
     return final_state["response"]

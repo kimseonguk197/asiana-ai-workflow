@@ -29,7 +29,6 @@ def run_sql_node(state: ChatGraphState) -> dict:
     # escalate 플래그도 함께 전달 (main_graph가 재시도까지 소진한 실패를 감지할 수 있도록).
     return {"response": result["response"], "escalate": result.get("escalate", False)}
 
-
 def run_action_node(state: ChatGraphState) -> dict:
     print("[LangGraph][GetApi] run_action 진입 (action_graph 서브그래프 실행)")
     result = action_graph.invoke({
@@ -38,6 +37,33 @@ def run_action_node(state: ChatGraphState) -> dict:
         "member_id": state["member_id"],
     })
     # return {"response": result["response"]}
+    # escalate 플래그도 함께 전달 (main_graph가 재시도까지 소진한 실패를 감지할 수 있도록).
+    return {"response": result["response"], "escalate": result.get("escalate", False)}
+
+
+def run_action_node_hitl(state: ChatGraphState) -> dict:
+    print("[LangGraph][GetApi] run_action 진입 (action_graph 서브그래프 실행)")
+
+    # HITL 순서0. action_graph 최초실행
+    # action_graph는 회원별로 확인 대기(interrupt) 상태를 이어갈 수 있어야 하므로
+    # member_id 기반 thread_id로 확인. db는 checkpoint에 저장되면 안 되므로 config로 전달.
+    thread_id = f"member-{state['member_id']}"
+    result = action_graph.invoke(
+        {
+            "message": state["message"],
+            "member_id": state["member_id"],
+        },
+        # RunnableConfig객체를 주입
+        config={"configurable": {"thread_id": thread_id, "db": state["db"]}},
+    )
+
+    # HITL 순서1 interrupt 감지, 상위 그래프에 pending_confirm 전달
+    # execute_action 진입 전 interrupt()가 걸려 result에 __interrupt__가 담겨 돌아올땐 main_graph까지 "확인 대기" 상태를 그대로 전달
+    if result.get("__interrupt__"):
+        confirm_payload = result["__interrupt__"][0].value
+        print(f"[LangGraph][GetApi] action 실행 확인 대기 | {confirm_payload}")
+        return {"pending_confirm": confirm_payload}
+
     # escalate 플래그도 함께 전달 (main_graph가 재시도까지 소진한 실패를 감지할 수 있도록).
     return {"response": result["response"], "escalate": result.get("escalate", False)}
 
@@ -66,6 +92,8 @@ def build_get_api_graph():
     graph.add_node("classify_intent", classify_intent_node)
     graph.add_node("run_sql", run_sql_node)
     graph.add_node("run_action", run_action_node)
+    # HITL 적용
+    # graph.add_node("run_action", run_action_node_hitl)
     graph.add_node("run_general", run_general_node)
 
     # START : 그래프를 실행할 때의 진입점
