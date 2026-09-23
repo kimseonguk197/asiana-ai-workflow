@@ -93,8 +93,8 @@ def build_get_api_graph():
     graph.add_node("run_sql", run_sql_node)
     graph.add_node("run_action", run_action_node)
     # HITL 적용
-    # graph.add_node("run_action", run_action_node_hitl)
-    graph.add_node("run_general", run_general_node)
+    graph.add_node("run_action", run_action_node_hitl)
+    # graph.add_node("run_general", run_general_node)
 
     # START : 그래프를 실행할 때의 진입점
 #   classify_intent ──(QUERY)───▶ run_sql ──┐

@@ -27,9 +27,10 @@ def create_chat(
     current_member: models.Member = Depends(get_current_member),
 ):
 
-    # [LangGraph 적용시] 캐시 조회부터 if/elif 분기 전체를 run_chat_graph줄로 대체
-    response_text = run_chat_graph(body.message, db, current_member)
-    # response_text = run_chat_graph_hitl(body.message, db, current_member)
+    # # [LangGraph 적용시] 캐시 조회부터 if/elif 분기 전체를 run_chat_graph줄로 대체
+    # response_text = run_chat_graph(body.message, db, current_member)
+    # HITL 적용
+    response_text = run_chat_graph_hitl(body.message, db, current_member)
         
     # # 같은질문에 대한 캐싱 : redis stack에 같은 질문이 이력이 있는지 검색
     # cached_response = semantic_cache.search(body.message, current_member.id)
