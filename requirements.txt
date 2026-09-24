@@ -21,6 +21,7 @@ rank-bm25 # BM25 algorithm (langchain-community BM25Retriever related)
 langgraph # LangGraph
 langgraph-checkpoint-postgres # LangGraph interrupt(HITL) checkpoint save
 grandalf #graph text ui
+langfuse
 # Redis cache
 redis[hiredis] 
 numpy
