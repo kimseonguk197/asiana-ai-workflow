@@ -1,0 +1,6 @@
+{"inputs": {"message": "내 주문 내역 보여줘"}}
+{"inputs": {"message": "3번 상품 2개 주문해줘"}}
+{"inputs": {"message": "새 상품 등록할래, 이름은 무선마우스, 카테고리는 전자제품, 가격 25000원, 재고 50개"}}
+{"inputs": {"message": "내 정보 보여줘"}}
+{"inputs": {"message": "환불 어떻게 해?"}, "outputs": {"expected_top_category": "get_policy"}}
+{"inputs": {"message": "안녕!"}}

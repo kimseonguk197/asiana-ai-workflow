@@ -18,9 +18,12 @@ from app.routers.member import my_page
 from app.ai.rag.semantic_cache import semantic_cache
 from app.ai.langgraph.main_graph import run_chat_graph
 from app.ai.langgraph.main_graph import run_chat_graph_hitl
+from langsmith import traceable 
 
 router = APIRouter(prefix="/chats", tags=["chat"])
+
 @router.post("", response_model=schemas.ChatResponse, status_code=status.HTTP_201_CREATED)
+# @traceable 
 def create_chat(
     body: schemas.ChatRequest,
     db: Session = Depends(get_db),
