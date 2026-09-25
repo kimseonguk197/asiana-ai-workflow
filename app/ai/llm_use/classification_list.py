@@ -2,8 +2,10 @@ TOOLS = [
     {
         "type": "function",
         "function": {
-            "name": "get_api",
-            "description": "주문/상품 등에 대한 조회/등록/수정/삭제 등의 요청에 사용합니다.",
+            # "name": "get_api",
+            # "description": "주문/상품 등에 대한 조회/등록/수정/삭제 등의 요청에 사용합니다.",
+            "name": "get_my_orders",
+            "description": "로그인한 사용자 본인의 주문 내역을 조회합니다. '내 주문', '주문 내역', '내가 주문한 것' 등의 요청에 사용합니다.",
             "parameters": {"type": "object", "properties": {}},
         },
     },

@@ -5,25 +5,25 @@ from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from .intent_list import INTENT_LIST
 
-# from app.ai.api_use.query.sql_pipeline import call_sql_pipeline
-# from app.ai.api_use.action.action_pipeline import call_action_pipeline
-# from app.ai.llm_use.llm_calling_langchain import generate_general_response
+from app.ai.api_use.query.sql_pipeline import call_sql_pipeline
+from app.ai.api_use.action.action_pipeline import call_action_pipeline
+from app.ai.llm_use.llm_calling_langchain import generate_general_response
 
 
-# # 의도 분류 후 QUERY/ACTION/GENERAL 파이프라인으로 라우팅 (chat.py의 get_api 분기에서도 재사용)
-# def process_api_request(message: str, db: Session, member_id: int) -> str:
-#     intent = classify_intent(message)
-#     print(f"[파이프라인] 의도 분류 결과: {intent}")
+# 의도 분류 후 QUERY/ACTION/GENERAL 파이프라인으로 라우팅 (chat.py의 get_api 분기에서도 재사용)
+def process_api_request(message: str, db: Session, member_id: int) -> str:
+    intent = classify_intent(message)
+    print(f"[파이프라인] 의도 분류 결과: {intent}")
 
-#     # 1)기존 조회 함수 호출 작업(목록/내역 조회 등)
-#     if intent == "QUERY":
-#         return call_sql_pipeline(message, db, member_id)
-#     # 2)기존API활용 작업(insert, update 등)
-#     elif intent == "ACTION":
-#         return call_action_pipeline(message, db, member_id)
-#     # 3)DB 작업 없는 일반 LLM응답
-#     else:
-#         return generate_general_response(message)
+    # 1)기존 조회 함수 호출 작업(목록/내역 조회 등)
+    if intent == "QUERY":
+        return call_sql_pipeline(message, db, member_id)
+    # 2)기존API활용 작업(insert, update 등)
+    elif intent == "ACTION":
+        return call_action_pipeline(message, db, member_id)
+    # 3)DB 작업 없는 일반 LLM응답
+    else:
+        return generate_general_response(message)
 
 #  의도 분류 LLM. 셋 중 하나의 도구를 반드시 호출하도록 강제.
 _llm_classify = ChatOpenAI(
