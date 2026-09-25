@@ -39,12 +39,13 @@ def create_chat(
 
     else:
         classification = classify_message(body.message)
-        # action = classify_message_langchain(body.message)
         print(classification)
         # if classification == "get_api":
         #     response_text = process_api_request(body.message, db, current_member.id)
         if classification == "get_my_orders":
             orders = my_orders(db=db, current_member=current_member)
+            data = _format_orders(orders)
+            response_text = generate_response(body.message, data)
         # 민감정보의 경우 sLLM을 통해 응답생성
         elif classification == "get_my_profile":
             member = my_page(current_member=current_member)
