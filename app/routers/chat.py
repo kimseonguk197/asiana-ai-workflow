@@ -1,4 +1,7 @@
+
 from fastapi import APIRouter, Depends, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+import httpx
 from sqlalchemy.orm import Session
 
 from app import models, schemas
@@ -22,12 +25,14 @@ from langsmith import traceable
 
 router = APIRouter(prefix="/chats", tags=["chat"])
 
+
 @router.post("", response_model=schemas.ChatResponse, status_code=status.HTTP_201_CREATED)
 # @traceable 
 def create_chat(
     body: schemas.ChatRequest,
     db: Session = Depends(get_db),
     current_member: models.Member = Depends(get_current_member),
+    credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer()),
 ):
     # 같은질문에 대한 캐싱 : redis stack에 같은 질문이 이력이 있는지 검색
     cached_response = semantic_cache.search(body.message, current_member.id)
@@ -71,6 +76,11 @@ def create_chat(
     # response_text = run_chat_graph(body.message, db, current_member)
     # HITL 적용
     # response_text = run_chat_graph_hitl(body.message, db, current_member)
+
+    # N8N 적용
+    # n8n 호출 시 사용자 토큰을 Authorization 헤더로 함께 전달
+    # chatbot -> n8n -> chatbot 종료
+    # response_text = classify_message_n8n(body.message, credentials.credentials)
         
 
 
@@ -102,6 +112,19 @@ def _format_profile(member: list) -> str:
     return f"- 회원번호: {member.id} / email: {member.email} / 회원명: {member.name} / age: {member.age} "
 
 
+def classify_message_n8n(message: str, token: str) -> str:
+    try:
+        response = httpx.post(
+            "http://localhost:5678/webhook/3b79e5e5-c4ec-4cc0-8ed2-ce5a25476d52",
+            json={"message": message},
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=30,
+        )
+        print(response.json())
+        return generate_response_langchain(message, response.json());
+    except (httpx.HTTPError, ValueError) as e:
+        print(f"[n8n classify] 호출 실패: {e}")
+        return "답변이 어려운 질문입니다."
 
 
 # 병렬 노드 + Reducer 병합 확인용 테스트
