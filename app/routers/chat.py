@@ -134,16 +134,15 @@ from fastapi.responses import StreamingResponse
 @router.get("/reducer-streaming")
 def test_reducer():
 
-    # result = sandbox_graph.invoke({"contexts": []})
+    result = sandbox_graph.invoke({"contexts": []})
+    return {
+        "contexts": "\n".join(result["contexts"])
+    }
 
-    # return {
-    #     "contexts": "\n".join(result["contexts"])
-    # }
+    # async def event_generator():
+    #     async for chunk in sandbox_graph.astream({"contexts": []}, stream_mode="updates"):
+    #         data = json.dumps(chunk, ensure_ascii=False)
+    #         yield f"data: {data}\n\n"
+    #     yield "data: [DONE]\n\n"
 
-    async def event_generator():
-        async for chunk in sandbox_graph.astream({"contexts": []}, stream_mode="updates"):
-            data = json.dumps(chunk, ensure_ascii=False)
-            yield f"data: {data}\n\n"
-        yield "data: [DONE]\n\n"
-
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+    # return StreamingResponse(event_generator(), media_type="text/event-stream")
