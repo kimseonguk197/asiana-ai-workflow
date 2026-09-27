@@ -142,7 +142,6 @@ def build_chat_graph():
 #       │(get_policy)──────▶ run_policy ───────────────────────────────────────────────────────┤
 #       └(그 외)───────────▶ run_general ───────────────────────────────────────────────────────┤
 #                                                                                      ▼
-#                                                                                  store_cache ─▶ END
 
     # Node = 행동 및 상태값 결정, Edge = 이동 규칙
     # check_cache노드부터 이동하여 실행
@@ -162,17 +161,13 @@ def build_chat_graph():
             "general": "run_general",
         },
     )
-    # for node in ("run_get_api", "run_profile", "run_policy", "run_general"):
-    #         graph.add_edge(node, "store_cache")
-        
 
     # sql_graph/action_graph가 재시도까지 소진하고도 실패(escalate)했으면 classify_message로 되돌아가
     # 1차 분류부터 재시도(최대 MAX_RECLASSIFY회)
     graph.add_conditional_edges(
         "run_get_api",
         route_after_get_api,
-        # {"reclassify": "classify_message", "done": "store_cache"}
-        # HITL : pending은 아직 response가 없어 store_cache로 보내면 안 되므로 바로 END.
+        # HITL : pending은 사람확인 요청 상태이고, 아직 response도 없으므로 store_cache로 보내지 않고 바로 END.
         {"reclassify": "classify_message", "done": "store_cache", "pending": END},
     )
     # 나머지 분기는 항상 store_cache로 수렴
