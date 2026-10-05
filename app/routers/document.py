@@ -26,12 +26,16 @@ def add_documents(body: schemas.DocumentCreate, db: Session = Depends(get_db)):
 
     return {"added": len(body.texts)}
 
+# 테스트 데이터)
+# {"texts": [
+#     "[교환 정책]\n교환 신청의 책임부서는 제품지원팀입니다.\n이 쇼핑몰의 교환 가능 기간은 상품 수령 후 7일 이내입니다.\n\n[환불 정책]\n환불 책임부서는 고객지원팀입니다.\n개봉, 사용흔적, 제품손상이 있는 경우 환불이 제한될 수 있습니다.\n결제 수단 기준으로 3영업일 이내 환불이 처리됩니다.\n\n[배송 정책]\n기본 배송비는 3,000원이며 5만원 이상 구매 시 무료배송입니다.\n전자제품의 경우는 배송비는 5,000원이며 10만원 이상 구매 시 무료배송입니다.\n도서산간 지역은 추가 배송비가 발생할 수 있습니다.\n배송은 결제 완료 후 영업일 기준 1~3일 이내 출고됩니다.\n천재지변 또는 물류사 사정에 따라 배송이 지연될 수 있습니다."
+#   ]}
 # 문서단위로 입력될 경우 : 청킹 설정
-# chunk_size: 청크 당 최대 글자 수
 # ["\n\n", "\n", ". ", " ", ""] 이런 내부 매커니즘을 우선순위로 문장 split
 splitter = RecursiveCharacterTextSplitter(
-    chunk_size=500,
-    chunk_overlap=50,
+    # chunk_size: 청크 당 최대 글자 수
+    chunk_size=150,
+    chunk_overlap=20,
 )
 
 
