@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from app.database import engine, Base
 from app.routers import member, product, order, chat
 from app.routers import document
-from app.ai.langgraph.action_graph import _checkpointer_pool
+from app.ai.langgraph.check_pointer import main_checkpointer
 
 # LangSmith 연동은 .env에서 설정된 환경변수값(API_KEY 등)만 존재하면 자동으로 읽어 적용
 
@@ -20,8 +20,7 @@ Base.metadata.create_all(bind=engine)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     yield
-    _checkpointer_pool.close()
-
+    main_checkpointer.close()
 
 app = FastAPI(title="AI Agent API", lifespan=lifespan)
 
