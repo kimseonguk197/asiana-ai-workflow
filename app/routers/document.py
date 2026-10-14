@@ -9,9 +9,6 @@ from app.dependencies import get_db
 from app.ai.rag.vector_store import vector_store
 
 router = APIRouter(prefix="/documents", tags=["documents"])
-
-
-
 @router.post("", response_model=schemas.DocumentResponse, status_code=status.HTTP_201_CREATED)
 def add_documents(body: schemas.DocumentCreate, db: Session = Depends(get_db)):
     # 문서단위, pdf 등 문장 전체일경우

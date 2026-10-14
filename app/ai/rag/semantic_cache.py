@@ -113,7 +113,7 @@ class SemanticCache:
             return None
         try:
             query_embedding = self._embed(question)
-
+        
             # 아래 쿼리는 Redis Stack(RediSearch)의 고유 문법
             q = (
                 Query(f"(@member_id:{{{member_id}}})=>[KNN 1 @question_embedding $vec AS score]")

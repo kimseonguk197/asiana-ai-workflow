@@ -3,8 +3,6 @@ from openai import OpenAI
 from .classification_list import TOOLS
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
-
 def classify_message(message: str) -> str:
     response = client.chat.completions.create(
         # temperature는 분류 작업에 맞는 낮은 값으로 설정. 기본값은 1

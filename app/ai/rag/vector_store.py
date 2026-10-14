@@ -22,3 +22,11 @@ vector_store = PGVector(
     collection_name="documents",
     use_jsonb=True,
 )
+
+vector_store_caching = PGVector(
+    embeddings=embeddings,
+    connection=_DATABASE_URL,
+    collection_name="caching",
+    use_jsonb=True,
+)
+

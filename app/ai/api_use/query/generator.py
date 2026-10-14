@@ -81,6 +81,7 @@ def generate_sql(user_message: str) -> str:
         "examples": FEW_SHOT_EXAMPLES,
         "user_message": user_message,
     })
+    print("최초 sql문생성 예시 :",response.content)
     print("입력 토큰사용량:", response.usage_metadata["input_tokens"])
     print("출력 토큰사용량:", response.usage_metadata["output_tokens"])
     print("전체 토큰사용량:", response.usage_metadata["total_tokens"])

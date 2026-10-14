@@ -23,7 +23,6 @@ def create_order(
 
     return order
 
-
 @router.get("/me", response_model=List[schemas.OrderResponse])
 def my_orders(
     db: Session = Depends(get_db),

@@ -5,18 +5,6 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.output_parsers import StrOutputParser
 from app.ai.llm_use.classification_list import TOOLS
 
-llm_classify = ChatOpenAI(
-    model="gpt-4.1-mini",
-    api_key=os.getenv("OPENAI_API_KEY"),
-    temperature=0
-)
-
-llm_response = ChatOpenAI(
-    model="gpt-4.1-mini",
-    api_key=os.getenv("OPENAI_API_KEY"),
-    temperature=0.3  
-)
-
 
 llm_response_llama = ChatOllama(
     model="llama3.2:3b",
@@ -30,6 +18,12 @@ llm_chat = ChatOpenAI(
     api_key=os.getenv("OPENAI_API_KEY"),
     temperature=0.5,
     max_tokens=500,
+)
+
+llm_classify = ChatOpenAI(
+    model="gpt-4.1-mini",
+    api_key=os.getenv("OPENAI_API_KEY"),
+    temperature=0
 )
 
 # langchain에서는 아래와 같이 모델만 변경하면 쉽게 코드 리팩토링 가능 
@@ -46,6 +40,12 @@ def classify_message_langchain(message: str) -> str:
         return "답변이 어려운 질문입니다."
     return tool_calls[0]["name"]
 
+
+llm_response = ChatOpenAI(
+    model="gpt-4.1-mini",
+    api_key=os.getenv("OPENAI_API_KEY"),
+    temperature=0.3  
+)
 
 def generate_response_langchain(user_message: str, data: str) -> str:
     prompt = ChatPromptTemplate.from_messages([

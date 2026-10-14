@@ -6,9 +6,8 @@ from typing import Any, Optional, TypedDict
 
 
 class ChatGraphState(TypedDict, total=False):
+    # db(Session)/member(ORM 객체)는 checkpoint에 직렬화할 수 없으므로 state가 아닌 매개변수(config(configurable))로 전달
     message: str
-    db: Any            
-    member: Any        
     member_id: int
 
     # 캐시여부
@@ -25,22 +24,19 @@ class ChatGraphState(TypedDict, total=False):
     reclassify: bool  # 1차 재분류가 다시 됐다면 True
     reclassify_count: int  # 1차 분류로 되돌아 온 횟수(1번만 추가 재분류처리)
 
-    # HITL 을 위한 변수
-    pending_confirm: Optional[dict]
+    # sql_graph 서브그래프() 상태
+    current_sql: str
+    corrected_sql: Optional[str]
+    validation_error: Optional[str]
+    execution_error: Optional[str]
+    retry_count: int  # 재시도 카운트
+    query_results: list[dict[str, Any]]
 
-    # # sql_graph 서브그래프() 상태
-    # current_sql: str
-    # corrected_sql: Optional[str]
-    # validation_error: Optional[str]
-    # execution_error: Optional[str]
-    # retry_count: int  # 재시도 카운트
-    # query_results: list[dict[str, Any]]
-
-    # # action_graph 상태
-    # category: Optional[str]
-    # selected_action_name: Optional[str]
-    # selected_action_args: dict
-    # action_error: Optional[str]
+    # action_graph 상태
+    category: Optional[str]
+    selected_action_name: Optional[str]
+    selected_action_args: dict
+    action_error: Optional[str]
 
 
     # 최종 응답
@@ -50,7 +46,6 @@ class ChatGraphState(TypedDict, total=False):
 # sql_graph 전용 State 
 class SqlGraphState(TypedDict, total=False):
     message: str
-    db: Any
     member_id: int
 
     # sql_graph 진행 상태
@@ -69,7 +64,6 @@ class SqlGraphState(TypedDict, total=False):
 # action_graph 전용 State
 class ActionGraphState(TypedDict, total=False):
     message: str
-    db: Any
     member_id: int
 
     # action_graph 진행 상태

@@ -12,60 +12,10 @@ from app.ai.llm_use.llm_calling_langchain import generate_general_response
 
 # 2차분류 : QUERY, ACTION, GENERAL
 def classify_intent_node(state: ChatGraphState) -> dict:
+    print("[LangGraph][GetApi] ===== get_api_graph 시작 =====")
     intent = classify_intent(state["message"])
     print(f"[LangGraph][GetApi] 2차 분류 결과: {intent}")
     return {"intent": intent}
-
-
-def run_sql_node(state: ChatGraphState) -> dict:
-    print("[LangGraph][GetApi] run_sql 진입 (sql_graph 서브그래프 실행)")
-    result = sql_graph.invoke({
-        "message": state["message"],
-        "db": state["db"],
-        "member_id": state["member_id"],
-        "retry_count": 0,
-    })
-    # return {"response": result["response"]}
-    # escalate 플래그도 함께 전달 (main_graph가 재시도까지 소진한 실패를 감지할 수 있도록).
-    return {"response": result["response"], "escalate": result.get("escalate", False)}
-
-def run_action_node(state: ChatGraphState) -> dict:
-    print("[LangGraph][GetApi] run_action 진입 (action_graph 서브그래프 실행)")
-    result = action_graph.invoke({
-        "message": state["message"],
-        "db": state["db"],
-        "member_id": state["member_id"],
-    })
-    # return {"response": result["response"]}
-    # escalate 플래그도 함께 전달 (main_graph가 재시도까지 소진한 실패를 감지할 수 있도록).
-    return {"response": result["response"], "escalate": result.get("escalate", False)}
-
-
-def run_action_node_hitl(state: ChatGraphState) -> dict:
-    print("[LangGraph][GetApi] run_action 진입 (action_graph 서브그래프 실행)")
-
-    # HITL 순서0. action_graph 최초실행
-    # action_graph는 회원별로 확인 대기(interrupt) 상태를 이어갈 수 있어야 하므로
-    # member_id 기반 thread_id로 확인. db는 checkpoint에 저장되면 안 되므로 config로 전달.
-    thread_id = f"member-{state['member_id']}"
-    result = action_graph.invoke(
-        {
-            "message": state["message"],
-            "member_id": state["member_id"],
-        },
-        # RunnableConfig객체를 주입
-        config={"configurable": {"thread_id": thread_id, "db": state["db"]}},
-    )
-
-    # HITL 순서1 interrupt 감지, 상위 그래프에 pending_confirm 전달
-    # execute_action 진입 전 interrupt()가 걸려 result에 __interrupt__가 담겨 돌아올땐 main_graph까지 "확인 대기" 상태를 그대로 전달
-    if result.get("__interrupt__"):
-        confirm_payload = result["__interrupt__"][0].value
-        print(f"[LangGraph][GetApi] action 실행 확인 대기 | {confirm_payload}")
-        return {"pending_confirm": confirm_payload}
-
-    # escalate 플래그도 함께 전달 (main_graph가 재시도까지 소진한 실패를 감지할 수 있도록).
-    return {"response": result["response"], "escalate": result.get("escalate", False)}
 
 
 def run_general_node(state: ChatGraphState) -> dict:
@@ -90,33 +40,28 @@ def build_get_api_graph():
     graph = StateGraph(ChatGraphState)
 
     graph.add_node("classify_intent", classify_intent_node)
-    graph.add_node("run_sql", run_sql_node)
-    # graph.add_node("run_action", run_action_node)
-    # HITL 적용
-    graph.add_node("run_action", run_action_node_hitl)
+    # 컴파일된 서브그래프를 노드로 직접 추가
+    graph.add_node("sql_graph", sql_graph)
+    graph.add_node("action_graph", action_graph)
     graph.add_node("run_general", run_general_node)
 
     # START : 그래프를 실행할 때의 진입점
-#   classify_intent ──(QUERY)───▶ run_sql ──┐
-#         │──────────(ACTION)───▶ run_action┤
-#         └──────────(GENERAL)──▶ run_general┤
-#                                             ▼
-#                                            END
+#   classify_intent ──(QUERY)───▶ sql_graph ────┐
+#         │──────────(ACTION)───▶ action_graph ─┤
+#         └──────────(GENERAL)──▶ run_general ──┤
+#                                               ▼
+#                                              END
 
     graph.add_edge(START, "classify_intent")
     graph.add_conditional_edges(
         "classify_intent",
         route_after_intent,
-        {"query": "run_sql", "action": "run_action", "general": "run_general"},
+        {"query": "sql_graph", "action": "action_graph", "general": "run_general"},
     )
-    graph.add_edge("run_sql", END)
-    graph.add_edge("run_action", END)
+    graph.add_edge("sql_graph", END)
+    graph.add_edge("action_graph", END)
     graph.add_edge("run_general", END)
     return graph.compile()
 
 
 get_api_graph = build_get_api_graph()
-
-# 그래프 구조를 서버 기동 시 1회 콘솔에 출력 (노드/엣지 전체를 한눈에 확인용)
-print("[LangGraph][GetApi] get_api_graph 구조 (mermaid) ↓↓↓")
-print(get_api_graph.get_graph().draw_mermaid())

@@ -12,23 +12,23 @@ from app.ai.api_use.query.generator import generate_sql, fix_sql
 from app.ai.api_use.query.validator import validate_and_correct
 from app.ai.api_use.query.executor import execute_sql
 from app.ai.api_use.query.response import format_sql_result, format_error_response
-# from app.ai.langgraph.state import ChatGraphState
-# 기존에는 main_graph와 공유하는 ChatGraphState를 그대로 썼지만, 분리
 from app.ai.langgraph.state import SqlGraphState
+from app.ai.langgraph.state import ChatGraphState
+from langchain_core.runnables import RunnableConfig
 
 # 기존 sql_pipeline.py의 `for attempt in range(3)`와 동일한 총 시도 횟수
 MAX_ATTEMPTS = 3
 
 
-# def generate_sql_node(state: ChatGraphState) -> dict:
-# 나머지 node와 edge도 모두 SqlGraphState로 변경
-def generate_sql_node(state: SqlGraphState) -> dict:
+# def generate_sql_node(state: SqlGraphState) -> dict:
+def generate_sql_node(state: ChatGraphState) -> dict:
+    print("[LangGraph][SQL] ===== sql_graph 시작 =====")
     print("[LangGraph][SQL] SQL 생성 시도 #1")
     sql = generate_sql(state["message"])
     return {"current_sql": sql, "retry_count": 0}
 
 
-def fix_sql_node(state: SqlGraphState) -> dict:
+def fix_sql_node(state: ChatGraphState) -> dict:
     error = state.get("execution_error") or state.get("validation_error")
     retry_count = state.get("retry_count", 0) + 1
     print(f"[LangGraph][SQL] SQL 수정 시도 #{retry_count + 1} | 이전 오류: {error}")
@@ -41,7 +41,7 @@ def fix_sql_node(state: SqlGraphState) -> dict:
     }
 
 
-def validate_sql_node(state: SqlGraphState) -> dict:
+def validate_sql_node(state: ChatGraphState) -> dict:
     result = validate_and_correct(state["current_sql"])
     if not result.is_valid:
         print(f"[LangGraph][SQL] 검증 실패: {result.error_message}")
@@ -50,7 +50,7 @@ def validate_sql_node(state: SqlGraphState) -> dict:
     return {"corrected_sql": result.corrected_sql, "validation_error": None}
 
 # validate_sql 이후 라우팅: 통과 -> execute_sql / 실패+재시도가능 -> fix_sql / 재시도소진 -> format_failure
-def route_after_validate(state: SqlGraphState) -> str:
+def route_after_validate(state: ChatGraphState) -> str:
     if state.get("validation_error"):
         decision = "retry" if state.get("retry_count", 0) < MAX_ATTEMPTS - 1 else "fail"
     else:
@@ -60,10 +60,10 @@ def route_after_validate(state: SqlGraphState) -> str:
 
 
 
-def execute_sql_node(state: SqlGraphState) -> dict:
+def execute_sql_node(state: ChatGraphState, config: RunnableConfig) -> dict:
     try:
         results = execute_sql(
-            state["db"],
+            config["configurable"]["db"],
             state["corrected_sql"],
             {"current_member_id": state["member_id"]},
         )
@@ -74,7 +74,7 @@ def execute_sql_node(state: SqlGraphState) -> dict:
         return {"execution_error": str(e)}
 
 # execute_sql 이후 라우팅: 성공 -> format_success / 실패+재시도가능 -> fix_sql / 재시도소진 -> format_failure
-def route_after_execute(state: SqlGraphState) -> str:
+def route_after_execute(state: ChatGraphState) -> str:
     if state.get("execution_error"):
         decision = "retry" if state.get("retry_count", 0) < MAX_ATTEMPTS - 1 else "fail"
     else:
@@ -83,14 +83,14 @@ def route_after_execute(state: SqlGraphState) -> str:
     return decision
 
 # 성공응답
-def format_success_node(state: SqlGraphState) -> dict:
+def format_success_node(state: ChatGraphState) -> dict:
     print("[LangGraph][SQL] format_success 진입")
     response = format_sql_result(state["message"], state["query_results"])
     return {"response": response}
 
 
 # 실패응답
-def format_failure_node(state: SqlGraphState) -> dict:
+def format_failure_node(state: ChatGraphState) -> dict:
     error = state.get("execution_error") or state.get("validation_error")
     print(f"[LangGraph][SQL] format_failure 진입 | 최종 오류: {error}")
     response = format_error_response(state["message"], error)
@@ -101,7 +101,7 @@ def format_failure_node(state: SqlGraphState) -> dict:
 
 
 def build_sql_graph():
-    graph = StateGraph(SqlGraphState)
+    graph = StateGraph(ChatGraphState)
 
     graph.add_node("generate_sql", generate_sql_node)
     graph.add_node("fix_sql", fix_sql_node)
@@ -133,7 +133,3 @@ def build_sql_graph():
 
 # 모듈 로드 시 1회 컴파일하여 재사용 (기존 llm_sql 등 모듈 레벨 인스턴스와 동일한 패턴)
 sql_graph = build_sql_graph()
-
-# 그래프 구조를 서버 기동 시 1회 콘솔에 출력 (사이클 포함 노드/엣지 전체를 한눈에 확인용)
-print("[LangGraph][SQL] sql_graph 구조 ↓↓↓")
-print(sql_graph.get_graph().draw_mermaid())

@@ -32,13 +32,12 @@ _llm_classify = ChatOpenAI(
     temperature=0,  # 분류 목적의 낮은 temperature값 설정.
 ).bind_tools(INTENT_LIST, tool_choice="required")
 
-_classify_prompt = ChatPromptTemplate.from_messages([
-    ("system", """사용자의 메시지를 아래 3가지 중 하나로 분류하세요."""),
-    ("user", "{user_message}"),
-])
-
 # 사용자 메시지 의도 분류: "QUERY" | "ACTION" | "GENERAL"
 def classify_intent(user_message: str) -> str:
+    _classify_prompt = ChatPromptTemplate.from_messages([
+        ("system", """사용자의 메시지를 아래 3가지 중 하나로 분류하세요."""),
+        ("user", "{user_message}"),
+    ])
     chain = _classify_prompt | _llm_classify
     response = chain.invoke({"user_message": user_message})
 

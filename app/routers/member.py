@@ -6,8 +6,6 @@ from app.services.auth import hash_password, verify_password, create_access_toke
 from app.dependencies import get_db, get_current_member
 
 router = APIRouter(prefix="/members", tags=["members"])
-
-
 @router.post("/signup", response_model=schemas.MemberResponse, status_code=status.HTTP_201_CREATED)
 def signup(body: schemas.MemberCreate, db: Session = Depends(get_db)):
     if db.query(models.Member).filter(models.Member.email == body.email).first():
