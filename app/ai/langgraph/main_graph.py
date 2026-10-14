@@ -163,11 +163,11 @@ def build_chat_graph():
             graph.add_edge(node, "store_cache")
 
     graph.add_edge("store_cache", END)
-    # return graph.compile()
+    return graph.compile()
 
     # checkpointer 주입
     # HITL 적용
-    return graph.compile(checkpointer=main_checkpointer)
+    # return graph.compile(checkpointer=main_checkpointer)
 
 chat_graph = build_chat_graph()
 
@@ -188,7 +188,7 @@ def run_chat_graph(message: str, db, member) -> str:
         },
         # db/member는 checkpoint에 저장되면 안 되므로 state가 아닌 config로 전달
         config={"configurable": {
-            "thread_id": thread_id, # checkpointer가 붙은 그래프는 thread_id 필수
+            # "thread_id": thread_id, # checkpointer가 붙은 그래프는 thread_id 필수
             "db": db, 
             "member": member}},
     )
