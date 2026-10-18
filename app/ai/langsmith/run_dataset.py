@@ -14,9 +14,9 @@ from langsmith import Client, evaluate
 
 from app import models
 from app.database import SessionLocal
-from app.ai.langgraph.main_graph import run_chat_graph_hitl
+from app.ai.langgraph.main_graph import run_chat_graph
 
-DATASET_NAME = "test-data"
+DATASET_NAME = "langsmith_dataset"
 
 # 테스트에 쓸 회원 id
 TEST_MEMBER_ID = 1
@@ -35,7 +35,7 @@ def target(inputs: dict) -> dict:
     db = SessionLocal()
     try:
         member = _get_test_member(db)
-        response = run_chat_graph_hitl(inputs["message"], db, member)
+        response = run_chat_graph(inputs["message"], db, member)
         return {"response": response}
     finally:
         db.close()
