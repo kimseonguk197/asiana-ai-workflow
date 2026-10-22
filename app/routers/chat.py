@@ -77,12 +77,6 @@ def create_chat(
     # # HITL 적용
     # response_text = run_chat_graph_hitl(body.message, db, current_member)
 
-    # N8N 적용
-    # n8n 호출 시 사용자 토큰을 Authorization 헤더로 함께 전달
-    # chatbot -> n8n -> chatbot 종료
-    # response_text = classify_message_n8n(body.message, credentials.credentials)
-        
-
     
     chat_record = models.Chat(
         member_id=current_member.id,
@@ -110,21 +104,6 @@ def _format_profile(member: list) -> str:
     if not member:
         return "회원정보가 없습니다."
     return f"- 회원번호: {member.id} / email: {member.email} / 회원명: {member.name} / age: {member.age} "
-
-
-def classify_message_n8n(message: str, token: str) -> str:
-    try:
-        response = httpx.post(
-            "http://localhost:5678/webhook/f5a4ebb0-2ea3-4193-af31-14c6e6fb0e69",
-            json={"message": message},
-            headers={"Authorization": f"Bearer {token}"},
-            timeout=30,
-        )
-        print(response.json())
-        return generate_response_langchain(message, response.json());
-    except (httpx.HTTPError, ValueError) as e:
-        print(f"[n8n classify] 호출 실패: {e}")
-        return "답변이 어려운 질문입니다."
 
 
 
