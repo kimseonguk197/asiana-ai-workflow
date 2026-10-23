@@ -41,8 +41,8 @@ def create_chat(
         response_text = cached_response
 
     else:
-        # classification = classify_message(body.message)
-        classification = classify_message_langchain(body.message)
+        classification = classify_message(body.message)
+        # classification = classify_message_langchain(body.message)
         print(classification)
         # if classification == "get_api":
         #     response_text = process_api_request(body.message, db, current_member.id)
